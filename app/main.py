@@ -40,6 +40,20 @@ def create_app():
         p=request.get_json(silent=True) or {}
         if not isinstance(p.get("version"),int): raise DomainError("BAD_VERSION","请提供版本号")
         return store.review(run_id,p["version"],p.get("decision"))
+    @application.post("/api/runs/<run_id>/corrections")
+    def correction(run_id):
+        p=request.get_json(silent=True) or {}
+        if not isinstance(p.get("version"),int): raise DomainError("BAD_VERSION","请提供补正所基于的版本号")
+        return store.correct(run_id,p["version"],p.get("decision"),p.get("reason",""),p.get("idempotency_key",""))
+    @application.get("/api/runs/<run_id>/judgments")
+    def judgments(run_id):
+        chain=store.judgment_chain(run_id)
+        run=store.get(run_id)
+        return {"run_id":run_id,"current_seq":run.get("current_seq"),"judgments":chain}
+    @application.get("/api/runs/<run_id>/backfill")
+    def backfill_view(run_id):
+        from app.corrections import build_backfill
+        return build_backfill(store.get(run_id))
     @application.get("/api/runs/<run_id>/archive")
     def archive(run_id):
         from app.archive import build_archive

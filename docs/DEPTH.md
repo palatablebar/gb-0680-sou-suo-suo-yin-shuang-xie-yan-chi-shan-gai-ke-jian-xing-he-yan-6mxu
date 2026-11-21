@@ -26,6 +26,7 @@
 | TRAP-14 | 重复键冲突 | 后写覆盖 | 保留首条并隔离冲突行 | `app/modules/m1_streams/rules.py` | `tests/test_m1.py::test_duplicate_conflict_real_sample` |
 | TRAP-18 | 空态三态 | 一律成功 | 分别错误码 | `app/modules/m1_streams/rules.py` | `tests/test_m1.py::test_three_empty_states` |
 | TRAP-26 | 旧版本提交 | 覆盖新结果 | 版本条件更新 | `app/store.py` | `tests/test_e2e.py::test_stale_review_409` |
+| TRAP-27 | 已发出判定写错 | 原地改导致已发凭据失真，或另建孤立记录产生两套结论 | 追加式判定链：原判定只标记superseded_by去向不改写，current_seq指向唯一现行版；补正带补正单号幂等，迟到旧版409 | `app/store.py` `app/corrections.py` | `tests/test_corrections.py` |
 | TRAP-06 | 全角版本 | 解析失败 | Decimal归一 | `app/values.py` | `tests/test_m2.py::test_fullwidth_version` |
 | TRAP-07 | 缺版本 | 当零处理 | 空值隔离 | `app/values.py` | `tests/test_m2.py::test_real_sentinel_isolated` |
 | TRAP-09 | 超大版本 | JSON精度损失 | 文本序列化 | `app/values.py` | `tests/test_m2.py::test_large_version_precise` |
@@ -36,6 +37,10 @@
 
 输入原始逻辑行=最终采纳来源行+隔离来源行+重复行+空白行+分段表头。派生记录用_sources保存完整来源，因此分组不丢行。业务预期合计与上游申报合计之差等于逐行差异之和。结果按输入摘要、规则版本及参数产生唯一批次，事务写入；同源重跑只复用已有批次。
 
+## 判定链与补正裁决
+
+复核签发后判定不可原地改写：judgments表追加保存每版判定及其evidence_sha256，旧版仅回写superseded_by去向，runs.current_seq在同一事务内指向最新版，故任意时刻只有一个现行正式判定，同时历史判定与证据保持原样。补正必须携带补正单号（idempotency_key）：同号同内容重试不产生新签发版，同号异内容拒绝；补正携带的basis_version过期即409，迟到旧补正无法覆盖新版。回补清单以原对账结论（original_status）为只读基线，叠加现行判定得到backfill_status，补正判定随原对账结论一并进入回补。
+
 ## 已知不覆盖
 
-4MB以上文件需预先按业务键分批；不模拟生产支付与外部回调。人工复核只变更批次状态，不改写原始记录。
+4MB以上文件需预先按业务键分批；不模拟生产支付与外部回调。人工复核与补正只在判定链上追加状态，不改写流水线原始记录与已签发证据。
